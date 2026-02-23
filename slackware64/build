@@ -1,0 +1,35 @@
+#!/bin/bash
+set -e
+SOURCE=${SOURCE:-'./slackware64-15.0'}
+export TARGET=${TARGET:-'./base'}
+mkdir -p ${TARGET}
+
+echo 'Installing packages...'
+while IFS= read -r pkg; do
+	if [ -f "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-[0-9]*.txz" ]; then
+		installpkg --terse "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-*.txz"
+	else
+		installpkg --terse "${SOURCE}/slackware64/${pkg}-[0-9]*.txz"
+	fi
+done < "$(dirname $0)/pkgs.list"
+ldconfig -r ${TARGET}
+
+echo 'Configuring Slackpkg and dependecies...'
+cp -v -f "$(dirname $0)/slackpkg.conf" ${TARGET}/etc/slackpkg/slackpkg.conf
+echo 'https://mirrors.slackware.com/slackware/slackware64-15.0/' > ${TARGET}/etc/slackpkg/mirrors
+cp -v ${SOURCE}/GPG-KEY ${TARGET}/root/GPG-KEY
+chroot ${TARGET} gpg --import /root/GPG-KEY
+chroot ${TARGET} update-ca-certificates -v -f
+
+echo 'Creating archive...'
+tar --file slackware64.tar \
+	--numeric-owner \
+       	--directory ${TARGET} \
+	--exclude run/lock/pkgtools \
+	--exclude root/GPG-KEY \
+	--exclude dev \
+	--exclude proc \
+	--exclude sys \
+	--create .
+
+exit
