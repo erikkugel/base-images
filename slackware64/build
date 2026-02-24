@@ -1,15 +1,15 @@
 #!/bin/bash
 set -e
 SOURCE=${SOURCE:-'./slackware64-15.0'}
-export TARGET=${TARGET:-'./base'}
+TARGET=${TARGET:-'./base'}
 mkdir -p ${TARGET}
 
 echo 'Installing packages...'
 while IFS= read -r pkg; do
 	if [ -f "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-[0-9]*.txz" ]; then
-		installpkg --terse "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-*.txz"
+		installpkg --root ${TARGET} --terse "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-*.txz"
 	else
-		installpkg --terse "${SOURCE}/slackware64/${pkg}-[0-9]*.txz"
+		installpkg --root ${TARGET} --terse "${SOURCE}/slackware64/${pkg}-[0-9]*.txz"
 	fi
 done < "$(dirname $0)/pkgs.list"
 ldconfig -r ${TARGET}

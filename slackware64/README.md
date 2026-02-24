@@ -18,9 +18,9 @@
     SOURCE=/mnt/dvd TARGET=/tmp/base build
     ```
 
-1. Import the base image archive into Docker:
+1. Build the base image archive into Docker (optionally, set metadata with `--label`):
     ```
-    cat slackware64.tar | docker import - slackware64
+    docker build --tag slackware64:latest .
     ```
 
 1. Test the image by updating Slackpkg:
