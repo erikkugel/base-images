@@ -6,10 +6,11 @@ mkdir -p ${TARGET}
 
 echo 'Installing packages...'
 while IFS= read -r pkg; do
-	if [ -f "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-[0-9]*.txz" ]; then
-		installpkg --root ${TARGET} --terse "${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-*.txz"
+	if [ -f ${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-[0-9]*.txz ]; then
+		echo "Installing patched ${pkg}"
+		installpkg --root ${TARGET} --terse ${SOURCE}/patches/packages/$(echo ${pkg} | cut -d '/' -f 2)-[0-9]*.txz
 	else
-		installpkg --root ${TARGET} --terse "${SOURCE}/slackware64/${pkg}-[0-9]*.txz"
+		installpkg --root ${TARGET} --terse ${SOURCE}/slackware64/${pkg}-[0-9]*.txz
 	fi
 done < "$(dirname $0)/pkgs.list"
 ldconfig -r ${TARGET}
