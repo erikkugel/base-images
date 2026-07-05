@@ -1,0 +1,10 @@
+name: Create Slackware64 Root Filesystem Archive
+description: Create an archive of a root filesystem for a Slackware base image
+
+runs:
+  using: 'docker'
+  image: 'Dockerfile'
+
+branding:
+  icon: 'package'
+  color: 'blue'

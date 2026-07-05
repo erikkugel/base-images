@@ -1,0 +1,65 @@
+# TBD
+
+on:
+  workflow_dispatch:
+    inputs:
+      slackware_mirror:
+        description: 'Slackware mirror URL'
+        required: true
+        default: 'https://mirror.csclub.uwaterloo.ca/slackware/slackware64-15.0/'
+      slackware_mirror_ssl_check:
+        description: 'Slackware mirror SSL certificate check'
+        required: true
+        default: 'true'
+jobs:
+  packages:
+    runs-on: ubuntu-latest
+    env:
+      CACHE_TAG: 2026070404
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set Wget check certificate flag
+        if: ${{ github.event.inputs.slackware_mirror_ssl_check == 'false' }}
+        run: echo "WGET_CHECK_CERTIFICATE=--no-check-certificate" >> $GITHUB_ENV
+        
+      - name: Fetch PACKAGES.TXT
+        run: |
+          mkdir -v -p /tmp/slackware64-15.0
+          wget --verbose ${WGET_CHECK_CERTIFICATE:-} ${{ github.event.inputs.slackware_mirror }}PACKAGES.TXT -O /tmp/slackware64-15.0/PACKAGES.TXT
+          ls -l /tmp/slackware64-15.0/PACKAGES.TXT
+          echo "PACKAGES_TXT_MD5=$(md5sum /tmp/slackware64-15.0/PACKAGES.TXT | cut -f 1 -d ' ' | tail -c8)" >> $GITHUB_ENV
+          echo "PACKAGES_LIST_MD5=$(md5sum slackware64/pkgs.list | cut -f 1 -d ' ' | tail -c8)" >> $GITHUB_ENV
+
+      - name: Restore Slackware Packages Cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: /tmp/slackware64-15.0
+          key: slackware-packages-${{env.CACHE_TAG}}-${{ env.PACKAGES_LIST_MD5 }}-${{ env.PACKAGES_TXT_MD5 }}
+          restore-keys: |
+            slackware-packages-${{env.CACHE_TAG}}-${{ env.PACKAGES_LIST_MD5 }}-
+            slackware-packages-${{env.CACHE_TAG}}-
+
+      - name: Download Slackware Packages
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          echo "Downloading Slackware Packages"
+          while IFS= read -r package; do
+            echo "Processing package: $package"
+            PKG_URL=${{ github.event.inputs.slackware_mirror }}"slackware64/`dirname $package`/$(grep -P "PACKAGE NAME:  `basename $package`\-[0-9]" /tmp/slackware64-15.0/PACKAGES.TXT | cut -c 16-)"
+            mkdir -p /tmp/slackware64-15.0/slackware64/`dirname $package`
+            wget --verbose ${WGET_CHECK_CERTIFICATE:-} --max-redirect=0 -N --no-if-modified-since -P /tmp/slackware64-15.0/slackware64/`dirname $package` ${PKG_URL}
+          done < slackware64/pkgs.list
+
+      - name: Prepare Source Directory
+        run: |
+          rm -r -f $GITHUB_WORKSPACE/slackware64/slackware64-15.0
+          mkdir -p $GITHUB_WORKSPACE/slackware64/slackware64-15.0
+          cp -a /tmp/slackware64-15.0 $GITHUB_WORKSPACE/slackware64/
+          wget --verbose ${WGET_CHECK_CERTIFICATE:-} ${{ github.event.inputs.slackware_mirror }}GPG-KEY -O $GITHUB_WORKSPACE/slackware64/slackware64-15.0/GPG-KEY
+      
+      - name: Create Archive
+        uses: ./.github/actions/slackware64_root_fs_archive
+
+      - run: ls -l -h slackware64/slackware64.tar
