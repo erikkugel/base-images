@@ -21,7 +21,7 @@ chroot ${TARGET} update-ca-certificates -v -f
 echo 'Creating archive...'
 tar --file slackware64.tar \
 	--numeric-owner \
-       	--directory ${TARGET} \
+	--directory ${TARGET} \
 	--exclude run/lock/pkgtools \
 	--exclude root/GPG-KEY \
 	--exclude dev \
