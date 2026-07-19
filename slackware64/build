@@ -15,7 +15,7 @@ echo 'Configuring Slackpkg and dependecies...'
 cp -v -f "$(dirname $0)/slackpkg.conf" ${TARGET}/etc/slackpkg/slackpkg.conf
 echo 'https://mirrors.slackware.com/slackware/slackware64-15.0/' > ${TARGET}/etc/slackpkg/mirrors
 cp -v ${SOURCE}/GPG-KEY ${TARGET}/root/GPG-KEY
-chroot ${TARGET} gpg --import /root/GPG-KEY
+chroot ${TARGET} gpg --homedir /root/.gnupg --import /root/GPG-KEY
 chroot ${TARGET} update-ca-certificates -v -f
 
 echo 'Creating archive...'

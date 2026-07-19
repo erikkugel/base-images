@@ -1,6 +1,6 @@
 on:
   schedule:
-    - cron: '30 5 * * 6'
+    - cron: '25 21 * * 0'
   
   push:
     branches:
@@ -24,10 +24,11 @@ on:
         default: 'true'
 
 env:
-  CACHE_TAG: 2026071902
+  CACHE_TAG: 2026071903
 
 jobs:
   process_mirror:
+    name: Process Slackware Mirror
     runs-on: ubuntu-latest
     outputs:
       slackware_mirror_url: ${{ steps.slackware_mirror.outputs.url }}
@@ -63,6 +64,9 @@ jobs:
           echo "previous=$(docker image inspect ${{ steps.image_details.outputs.name }}:latest | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
 
   base_image:
+    name: Build Base Image
+    permissions:
+      packages: write
     runs-on: ubuntu-latest
     needs: process_mirror
     if: ${{ (needs.process_mirror.outputs.packages_txt_md5sum != needs.process_mirror.outputs.previous_packages_txt_md5sum) || (github.event_name != 'schedule')}}
@@ -94,7 +98,7 @@ jobs:
             echo "Processing package: $package"
             PKG_URL=${{ needs.process_mirror.outputs.slackware_mirror_url }}"slackware64/`dirname $package`/$(grep -P "PACKAGE NAME:  `basename $package`\-[0-9]" /tmp/slackware64-15.0/PACKAGES.TXT | cut -c 16-)"
             mkdir -p /tmp/slackware64-15.0/slackware64/`dirname $package`
-            wget --verbose ${{ needs.process_mirror.outputs.slackware_mirror_check_certificate }} --max-redirect=1 -N --no-if-modified-since -P /tmp/slackware64-15.0/slackware64/`dirname $package` ${PKG_URL}
+            wget --verbose ${{ needs.process_mirror.outputs.slackware_mirror_check_certificate }} -N --no-if-modified-since -P /tmp/slackware64-15.0/slackware64/`dirname $package` ${PKG_URL}
           done < slackware64/pkgs.list
 
       - name: Prepare Source Directory
