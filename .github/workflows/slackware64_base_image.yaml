@@ -63,8 +63,10 @@ jobs:
         id: md5sums
         run: |
           echo "current=$(wget ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} ${{ steps.slackware_mirror.outputs.url }}PACKAGES.TXT -O- | md5sum | cut -f 1 -d ' ' | tail -c9)" >> $GITHUB_OUTPUT
-          docker image pull ghcr.io/${{ github.repository_owner }}/slackware64
-          echo "previous=$(docker image inspect ${{ steps.image_details.outputs.name }}:latest | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+          docker image pull ${{ steps.image_details.outputs.name }}:latest_test
+          echo "previous=$(docker image inspect ${{ steps.image_details.outputs.name }}:latest_test | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+
+      - run: echo "PACKAGES.TXT MD5 sums - Current> ${{ steps.md5sums.outputs.current }} ; Previous> ${{ steps.md5sums.outputs.previous }}"
 
   base_image:
     name: Build Base Image
