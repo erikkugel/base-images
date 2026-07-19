@@ -153,14 +153,14 @@ jobs:
           provenance: false
           tags: "${{ steps.image_details.outputs.name }}:${{ steps.image_details.outputs.version }}"
 
-      # - name: Test
-      #   run: docker run --rm "${{ steps.image_details.outputs.name }}:${{ steps.image_details.outputs.version }}" slackpkg update
+      - name: Test
+        run: docker run --rm "${{ steps.image_details.outputs.name }}:${{ steps.image_details.outputs.version }}" slackpkg update
 
-      # - name: Build and Push Docker Image
-      #   uses: docker/build-push-action@v7
-      #   with:
-      #     context: slackware64
-      #     push: true
-      #     provenance: false
-      #     tags: ${{ steps.meta.outputs.tags }}
-      #     labels: ${{ steps.meta.outputs.labels }}
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v7
+        with:
+          context: slackware64
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
