@@ -24,7 +24,7 @@ on:
         default: 'true'
 
 env:
-  CACHE_TAG: 2026071902
+  CACHE_TAG: 2026071903
 
 jobs:
   process_mirror:
@@ -94,7 +94,7 @@ jobs:
             echo "Processing package: $package"
             PKG_URL=${{ needs.process_mirror.outputs.slackware_mirror_url }}"slackware64/`dirname $package`/$(grep -P "PACKAGE NAME:  `basename $package`\-[0-9]" /tmp/slackware64-15.0/PACKAGES.TXT | cut -c 16-)"
             mkdir -p /tmp/slackware64-15.0/slackware64/`dirname $package`
-            wget --verbose ${{ needs.process_mirror.outputs.slackware_mirror_check_certificate }} --max-redirect=1 -N --no-if-modified-since -P /tmp/slackware64-15.0/slackware64/`dirname $package` ${PKG_URL}
+            wget --verbose ${{ needs.process_mirror.outputs.slackware_mirror_check_certificate }} -N --no-if-modified-since -P /tmp/slackware64-15.0/slackware64/`dirname $package` ${PKG_URL}
           done < slackware64/pkgs.list
 
       - name: Prepare Source Directory
