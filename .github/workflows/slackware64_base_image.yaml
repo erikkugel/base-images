@@ -64,8 +64,11 @@ jobs:
         id: md5sums
         run: |
           echo "current=$(wget ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} ${{ steps.slackware_mirror.outputs.url }}PACKAGES.TXT -O- | md5sum | cut -f 1 -d ' ' | tail -c9)" >> $GITHUB_OUTPUT
-          docker image pull ${{ env.IMAGE_NAME }}:latest_test
-          echo "previous=$(docker image inspect ${{ env.IMAGE_NAME }}:latest_test | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+          if docker image pull ${{ env.IMAGE_NAME }}:latest_test; then
+            echo "previous=$(docker image inspect ${{ env.IMAGE_NAME }}:latest_test | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+          else
+            echo previous='' >> $GITHUB_OUTPUT
+          fi
 
       - name: Show PACKAGES.TXT MD5 Sums
         run: |
