@@ -24,6 +24,7 @@ on:
         default: 'true'
 
 env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/slackware64
   CACHE_TAG: 2026071903
 
 jobs:
@@ -38,11 +39,11 @@ jobs:
       packages_txt_md5sum: ${{ steps.md5sums.outputs.current }}
       previous_packages_txt_md5sum: ${{ steps.md5sums.outputs.previous }}
     steps:
-      - name: Set Image Details
-        id: image_details
-        run: |
-          echo name=ghcr.io/${{ github.repository_owner }}/slackware64 >> $GITHUB_OUTPUT
-          echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
+      # - name: Set Image Details
+      #   id: image_details
+      #   run: |
+      #     echo name=ghcr.io/${{ github.repository_owner }}/slackware64 >> $GITHUB_OUTPUT
+      #     echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
 
       - name: Set Slackware Mirror
         id: slackware_mirror
@@ -63,7 +64,17 @@ jobs:
         id: md5sums
         run: |
           echo "current=$(wget ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} ${{ steps.slackware_mirror.outputs.url }}PACKAGES.TXT -O- | md5sum | cut -f 1 -d ' ' | tail -c9)" >> $GITHUB_OUTPUT
-          echo "previous=$(docker image inspect ${{ steps.image_details.outputs.name }}:latest | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+          docker image pull ${{ env.IMAGE_NAME }}:latest_test
+          echo "previous=$(docker image inspect ${{ env.IMAGE_NAME }}:latest_test | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+
+      - name: Show PACKAGES.TXT MD5 Sums
+        run: |
+          echo -e "PACKAGES.TXT MD5 sums: \nCurrent> ${{ steps.md5sums.outputs.current }}\nPrevious> ${{ steps.md5sums.outputs.previous }}"
+          if [ "${{ steps.md5sums.outputs.current }}" == "${{ steps.md5sums.outputs.previous }}" ]; then
+            echo "MD5 sums match, PACKAGES.TXT file are identical"
+          else
+            echo "MD5 sums no not match, PACKAGES.TXT file are different"
+          fi
 
   base_image:
     name: Build Base Image
@@ -117,7 +128,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create Archive
+      - name: Create Archiveidentical
         uses: ./.github/actions/slackware64_root_fs_archive
 
       - name: Setup Docker Buildx
@@ -126,14 +137,14 @@ jobs:
       - name: Set Image Details
         id: image_details
         run: |
-          echo name=ghcr.io/${{ github.repository_owner }}/slackware64 >> $GITHUB_OUTPUT
+          # echo name=ghcr.io/${{ github.repository_owner }}/slackware64 >> $GITHUB_OUTPUT
           echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
 
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ steps.image_details.outputs.name }}
+          images: ${{ env.IMAGE_NAME }}
           tags: |
             ${{ steps.image_details.outputs.version }}
             latest_test
@@ -157,10 +168,10 @@ jobs:
           push: false
           load: true
           provenance: false
-          tags: "${{ steps.image_details.outputs.name }}:${{ steps.image_details.outputs.version }}"
+          tags: "${{ env.IMAGE_NAME }}:${{ steps.image_details.outputs.version }}"
 
       - name: Test
-        run: docker run --rm "${{ steps.image_details.outputs.name }}:${{ steps.image_details.outputs.version }}" slackpkg update
+        run: docker run --rm "${{ env.IMAGE_NAME }}:${{ steps.image_details.outputs.version }}" slackpkg update
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v7
