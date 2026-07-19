@@ -28,6 +28,9 @@ env:
 
 jobs:
   process_mirror:
+    name: Process Slackware Mirror
+    permissions:
+      packages: write
     runs-on: ubuntu-latest
     outputs:
       slackware_mirror_url: ${{ steps.slackware_mirror.outputs.url }}
@@ -63,6 +66,7 @@ jobs:
           echo "previous=$(docker image inspect ${{ steps.image_details.outputs.name }}:latest | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
 
   base_image:
+    name: Build Base Image
     runs-on: ubuntu-latest
     needs: process_mirror
     if: ${{ (needs.process_mirror.outputs.packages_txt_md5sum != needs.process_mirror.outputs.previous_packages_txt_md5sum) || (github.event_name != 'schedule')}}
