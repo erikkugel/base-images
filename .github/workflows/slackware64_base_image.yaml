@@ -16,12 +16,14 @@ on:
     inputs:
       slackware_mirror:
         description: Slackware mirror URL
+        type: string
         required: true
         default: 'https://mirrors.slackware.com/slackware/slackware64-15.0/'
       slackware_mirror_ssl_check:
         description: Slackware mirror SSL certificate check
+        type: boolean
         required: true
-        default: 'true'
+        default: true
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/slackware64
@@ -36,8 +38,8 @@ jobs:
     outputs:
       slackware_mirror_url: ${{ steps.slackware_mirror.outputs.url }}
       slackware_mirror_check_certificate: ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }}
-      packages_txt_md5sum: ${{ steps.md5sums.outputs.current }}
-      previous_packages_txt_md5sum: ${{ steps.md5sums.outputs.previous }}
+      packages_txt_md5sum: ${{ steps.compare_source_packages.outputs.md5sum }}
+      new_packages: ${{ steps.compare_source_packages.outputs.new }}
     steps:
       - name: Set Slackware Mirror
         id: slackware_mirror
@@ -51,26 +53,30 @@ jobs:
 
       - name: Override Mirror SSL Certificate Checking
         id: slackware_mirror_check_certificate
-        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.slackware_mirror_ssl_check == 'false') }}
+        if: ${{ (github.event_name == 'workflow_dispatch') && (github.event.inputs.slackware_mirror_ssl_check == false) }}
         run: echo "no_check_certificate=--no-check-certificate" >> $GITHUB_OUTPUT
 
-      - name: Process Package Lists
-        id: md5sums
+      - name: Compare Source Package Lists
+        id: compare_source_packages
         run: |
-          echo "current=$(wget ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} ${{ steps.slackware_mirror.outputs.url }}PACKAGES.TXT -O- | md5sum | cut -f 1 -d ' ' | tail -c9)" >> $GITHUB_OUTPUT
+          PACKAGES_TXT_MD5SUM_CURRENT=$(wget ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} ${{ steps.slackware_mirror.outputs.url }}PACKAGES.TXT -O- | md5sum -z | cut -f 1 -d ' ')
+          echo "md5sum=$(echo $PACKAGES_TXT_MD5SUM_CURRENT)" >> $GITHUB_OUTPUT
+
           if docker image pull ${{ env.IMAGE_NAME }}:latest_test; then
-            echo "previous=$(docker image inspect ${{ env.IMAGE_NAME }}:latest_test | jq .[].Config.Labels.\"com.slackware.packages.txt.md5\")" >> $GITHUB_OUTPUT
+            PACKAGES_TXT_MD5SUM_PREVIOUS="$(docker image inspect ${{ env.IMAGE_NAME }}:latest_test | jq -r .[].Config.Labels.\"com.slackware.packages.txt.md5sum\")"
           else
-            echo previous='' >> $GITHUB_OUTPUT
+            PACKAGES_TXT_MD5SUM_PREVIOUS=''
           fi
 
-      - name: Show PACKAGES.TXT MD5 Sums
-        run: |
-          echo -e "PACKAGES.TXT MD5 sums: \nCurrent> ${{ steps.md5sums.outputs.current }}\nPrevious> ${{ steps.md5sums.outputs.previous }}"
-          if [ "${{ steps.md5sums.outputs.current }}" == "${{ steps.md5sums.outputs.previous }}" ]; then
-            echo "MD5 sums match, PACKAGES.TXT file are identical"
+          echo PREVIOUS: $PACKAGES_TXT_MD5SUM_PREVIOUS
+          echo CURRENT: $PACKAGES_TXT_MD5SUM_CURRENT
+
+          if [ "$PACKAGES_TXT_MD5SUM_CURRENT" == "$PACKAGES_TXT_MD5SUM_PREVIOUS" ]; then
+            echo "No new packages since last PACKAGES.TXT"
+            echo "new=false" >> $GITHUB_OUTPUT
           else
-            echo "MD5 sums no not match, PACKAGES.TXT file are different"
+            echo "New packages since last PACKAGES.TXT"
+            echo "new=true" >> $GITHUB_OUTPUT
           fi
 
   base_image:
@@ -79,7 +85,7 @@ jobs:
       packages: write
     runs-on: ubuntu-latest
     needs: process_mirror
-    if: ${{ (needs.process_mirror.outputs.packages_txt_md5sum != needs.process_mirror.outputs.previous_packages_txt_md5sum) || (github.event_name != 'schedule') }}
+    if: ${{ (needs.process_mirror.outputs.new_packages == 'true') || (github.event_name != 'schedule') }}
     steps:
       - uses: actions/checkout@v6
 
@@ -88,7 +94,7 @@ jobs:
         run: |
           mkdir -v -p /tmp/slackware64-15.0
           wget --verbose ${{ needs.process_mirror.outputs.slackware_mirror_check_certificate }} ${{ needs.process_mirror.outputs.slackware_mirror_url }}PACKAGES.TXT -O /tmp/slackware64-15.0/PACKAGES.TXT
-          echo "list_md5sum=$(md5sum slackware64/pkgs.list | cut -f 1 -d ' ' | tail -c9)" >> $GITHUB_OUTPUT
+          echo "list_md5sum=$(md5sum -z slackware64/pkgs.list | cut -f 1 -d ' ')" >> $GITHUB_OUTPUT
 
       - name: Restore Slackware Packages Cache
         id: cache
@@ -125,7 +131,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create Archiveidentical
+      - name: Create Archive
         uses: ./.github/actions/slackware64_root_fs_archive
 
       - name: Setup Docker Buildx
@@ -133,9 +139,7 @@ jobs:
 
       - name: Set Image Details
         id: image_details
-        run: |
-          # echo name=ghcr.io/${{ github.repository_owner }}/slackware64 >> $GITHUB_OUTPUT
-          echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
+        run: echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
 
       - name: Docker meta
         id: meta
@@ -153,9 +157,7 @@ jobs:
             org.opencontainers.image.licenses=WTFPL
             com.slackware.version=15.0
             com.slackware.arch=x86_64
-            com.slackware.packages.txt.md5=${{ needs.process_mirror.outputs.packages_txt_md5sum }}
-
-      - run: echo ${{ steps.meta.outputs.tags }} | jq .
+            com.slackware.packages.txt.md5sum=${{ needs.process_mirror.outputs.packages_txt_md5sum }}
 
       - name: Build Docker Image
         id: build
