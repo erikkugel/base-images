@@ -1,0 +1,252 @@
+on:
+  # schedule:
+  #   - cron: '23 4 * * 0'
+  
+  push:
+    branches:
+      - main
+      - workflows
+    paths:
+      - 'slackware/build'
+      - 'slackware/Dockerfile'
+      - 'slackware/pkgs*.list'
+      - 'slackware/slackpkg.conf'
+
+  workflow_dispatch:
+    inputs:
+      slackware_mirror_domain:
+        description: Slackware mirror domain
+        type: string
+        required: true
+        default: 'mirrors.slackware.com'
+      slackware_mirror_ssl_check:
+        description: Slackware mirror SSL certificate check
+        type: boolean
+        required: true
+        default: true
+
+env:
+  CACHE_TAG: 2026082301
+  LATEST_IMAGE_TAG: latest_test
+
+jobs:
+  build_images:
+    name: Build Slackware Base Docker Images
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            release: '15.0'
+            image_name: ghcr.io/${{ github.repository_owner }}/slackware64
+            packages_directory: slackware64
+          - arch: i686
+            release: '15.0'
+            image_name: ghcr.io/${{ github.repository_owner }}/slackware
+            packages_directory: slackware
+          - arch: x86_64
+            release: 'current'
+            image_name: ghcr.io/${{ github.repository_owner }}/slackware64-current
+            packages_directory: slackware64
+          - arch: i686
+            release: 'current'
+            image_name: ghcr.io/${{ github.repository_owner }}/slackware-current
+            packages_directory: slackware
+      max-parallel: 1
+    permissions:
+      packages: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set Slackware Mirror
+        id: slackware_mirror
+        run: |
+          if [ ${GITHUB_EVENT_NAME} == 'workflow_dispatch' ] && [ "${{ github.event.inputs.slackware_mirror_domain }}" != '' ]; then
+            MIRROR_URL="https://${{ github.event.inputs.slackware_mirror_domain }}/slackware/${{ matrix.packages_directory }}-${{ matrix.release }}"
+          else
+            MIRROR_URL="https://mirrors.slackware.com/slackware/${{ matrix.packages_directory }}-${{ matrix.release }}"
+          fi
+          echo "url=${MIRROR_URL}" >> $GITHUB_OUTPUT
+
+      - name: Override Mirror SSL Certificate Checking
+        id: slackware_mirror_check_certificate
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.slackware_mirror_ssl_check == false
+        run:
+          echo "no_check_certificate=--no-check-certificate" >> $GITHUB_OUTPUT
+
+      - uses: actions/checkout@v6
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Mirror Packages Hash
+        id: mirror_packages_hash
+        run: |
+          # Download a provided precalculated list of checksums for all package files from the mirror
+          wget ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} ${{ steps.slackware_mirror.outputs.url }}/CHECKSUMS.md5 -O /tmp/CHECKSUMS.md5
+          
+          # Filter the checksums list for our (to be install in image) packages only
+          while IFS= read -r package; do
+            echo "Looking for ${package} MD5 in CHECKSUMS.md5..."
+            echo `grep -P "\/patches\/packages\/$(basename ${package})-[0-9].*\.txz$" /tmp/CHECKSUMS.md5 \
+             || grep -P "\/${{ matrix.packages_directory }}\/${package}-[0-9].*\.txz$" /tmp/CHECKSUMS.md5` \
+             >> /tmp/IMAGE_PACKAGES_CHECKSUMS.md5
+          done < slackware/pkgs-${{ matrix.release }}.list
+
+          # Caluculate the hash of the filtered checksums (a checksum of checksums!)
+          MIRROR_PACKAGES_HASH="$(md5sum /tmp/IMAGE_PACKAGES_CHECKSUMS.md5 -z | cut -f 1 -d ' ')"
+
+          if docker image pull ${{ matrix.image_name }}:${LATEST_IMAGE_TAG}; then
+            IMAGE_PACKAGES_HASH="$(docker image inspect ${{ matrix.image_name }}:${LATEST_IMAGE_TAG} | jq -r .[].Config.Labels.\"com.slackware.packages.hash\")"
+          else
+            IMAGE_PACKAGES_HASH=''
+          fi
+
+          echo MIRROR_PACKAGES_HASH: $MIRROR_PACKAGES_HASH
+          echo IMAGE_PACKAGES_HASH: $IMAGE_PACKAGES_HASH
+
+          if [ "$MIRROR_PACKAGES_HASH" == "$IMAGE_PACKAGES_HASH" ]; then
+            echo "No new packages in the last PACKAGES.TXT"
+            echo "new=false" >> $GITHUB_OUTPUT
+          else
+            echo "New packages in the last PACKAGES.TXT"
+            echo "new=true" >> $GITHUB_OUTPUT
+          fi
+
+          echo mirror_packages_hash=$MIRROR_PACKAGES_HASH >> $GITHUB_OUTPUT
+          echo "list_hash=$(md5sum -z slackware/pkgs-${{ matrix.release }}.list | cut -f 1 -d ' ')" >> $GITHUB_OUTPUT
+
+      - name: Restore Slackware Packages Cache
+        id: cache
+        uses: actions/cache@v6
+        if: steps.mirror_packages_hash.outputs.new == 'true'
+        with:
+          path: /tmp/source
+          key: slackware-packages-${{ env.CACHE_TAG }}-${{ matrix.arch }}-${{ matrix.release }}-${{ steps.mirror_packages_hash.outputs.list_hash }}-${{ steps.mirror_packages_hash.outputs.mirror_packages_hash }}
+          restore-keys: |
+            slackware-packages-${{ env.CACHE_TAG }}-${{ matrix.arch }}-${{ matrix.release }}-${{ steps.mirror_packages_hash.outputs.list_hash }}-
+            slackware-packages-${{ env.CACHE_TAG }}-${{ matrix.arch }}-${{ matrix.release }}-
+
+      - name: Download Slackware Packages
+        if: steps.cache.outputs.cache-hit != 'true' && steps.mirror_packages_hash.outputs.new == 'true'
+        run: |
+          echo "Downloading Slackware Packages"
+          # mkdir -p /tmp/source
+          while IFS= read -r package; do
+            echo "Processing package: $package"
+            PKG_PATH=$(grep -Po "/patches/packages/`basename ${package}`-[0-9].*\.txz$" /tmp/CHECKSUMS.md5 \
+             || grep -Po "/${{ matrix.packages_directory }}/${package}-[0-9].*\.txz$" /tmp/CHECKSUMS.md5)
+            if [ ! -d ${PKG_PATH} ]; then
+              mkdir -p -v /tmp/source/`dirname ${PKG_PATH}`
+            fi
+            wget --verbose \
+             ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} \
+             -N --no-if-modified-since \
+             -P /tmp/source/`dirname ${PKG_PATH}` \
+             ${{ steps.slackware_mirror.outputs.url }}/${PKG_PATH}
+          done < slackware/pkgs-${{ matrix.release }}.list
+
+      - name: Prepare Source Directory
+        id: source_directory
+        if: steps.mirror_packages_hash.outputs.new == 'true'
+        run: |
+          rm -r -f $GITHUB_WORKSPACE/slackware/source
+          cp -a /tmp/source $GITHUB_WORKSPACE/slackware/source
+          wget --verbose ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} \
+           -O $GITHUB_WORKSPACE/slackware/source/GPG-KEY \
+           ${{ steps.slackware_mirror.outputs.url }}/GPG-KEY
+
+      - name: Create Root Filesystem Archive
+        id: create_archive
+        uses: ./.github/actions/slackware_root_fs_archive
+        if: steps.source_directory.outcome == 'success'
+        with:
+          ARCH: ${{ matrix.arch }}
+          RELEASE: ${{ matrix.release }}
+          SOURCE: ${{ github.workspace }}/slackware/source
+          TARGET: ${{ github.workspace }}/slackware/base
+
+      - name: Setup Docker Buildx
+        id: setup_buildx
+        if: steps.create_archive.outcome == 'success'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Set Image Details
+        id: image_details
+        if: steps.setup_buildx.outcome == 'success'
+        run: |
+          echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
+          echo created=$(date -u +"%Y-%m-%dT%H:%M:%SZ") >> $GITHUB_OUTPUT
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6
+        if: steps.image_details.outcome == 'success'
+        with:
+          images: ${{ matrix.image_name }}
+          tags: |
+            ${{ steps.image_details.outputs.version }}
+            ${{ env.LATEST_IMAGE_TAG }}
+          # https://specs.opencontainers.org/image-spec/annotations/?v=v1.1.1
+          labels: |
+            org.opencontainers.image.created=${{ steps.image_details.outputs.created }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}/slackware
+            org.opencontainers.image.version=${{ steps.image_details.outputs.version }}
+            org.opencontainers.image.title=Slackware Base Image
+            org.opencontainers.image.description=Slackware base image built from a minimal root filesystem
+            org.opencontainers.image.licenses=WTFPL
+            com.slackware.arch=${{ matrix.arch }}
+            com.slackware.release=${{ matrix.release }}
+            com.slackware.packages.hash=${{ steps.mirror_packages_hash.outputs.mirror_packages_hash }}
+
+      - name: Build Docker Image
+        id: build
+        uses: docker/build-push-action@v7
+        if: steps.create_archive.outcome == 'success' && steps.meta.outcome == 'success'
+        with:
+          context: slackware
+          push: false
+          load: true
+          provenance: false
+          tags: "${{ matrix.image_name }}:${{ steps.image_details.outputs.version }}"
+      
+      - id: tests
+        if: steps.build.outcome == 'success'
+        run: |
+          # Generate a unique tag for the newly built image
+          BASE_IMAGE_UUID=`cat /proc/sys/kernel/random/uuid`
+          echo "base_image_uuid=${BASE_IMAGE_UUID}" >> $GITHUB_OUTPUT
+          docker image tag ${{ steps.build.outputs.imageid }} slackware_test:${BASE_IMAGE_UUID}
+
+          # Generate a unique tag for the target test image that uses the newly built image
+          TEST_IMAGE_UUID=`cat /proc/sys/kernel/random/uuid`
+          echo "test_image_uuid=${TEST_IMAGE_UUID}" >> $GITHUB_OUTPUT
+          docker image build \
+            --build-arg BASE_IMAGE="slackware_test:${BASE_IMAGE_UUID}" \
+            --file ${GITHUB_WORKSPACE}/slackware/Dockerfile.test \
+            --tag slackware_test:${TEST_IMAGE_UUID} \
+            ${GITHUB_WORKSPACE}/slackware
+
+          # Run a set of tests inside the test image
+          docker container run --tty --attach stdout --attach stderr \
+            --env ARCH=${{ matrix.arch }} \
+            --env MIRROR=${{ steps.slackware_mirror.outputs.url }} \
+            --env WGET_NO_CHECK_CERTIFICATE=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.slackware_mirror_ssl_check == false }} \
+            slackware_test:${TEST_IMAGE_UUID}
+
+      - if: steps.tests.conclusion != 'skipped'
+        run: docker image rm -f
+          slackware_test:${{ steps.tests.outputs.base_image_uuid }}
+          slackware_test:${{ steps.tests.outputs.test_image_uuid }}
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v7
+        if: steps.tests.outcome == 'success'
+        with:
+          context: slackware
+          push: true
+          provenance: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
