@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM $BASE_IMAGE
+ADD tests.sh /tests.sh
+ENTRYPOINT [ "/bin/bash", "/tests.sh" ]

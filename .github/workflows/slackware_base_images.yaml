@@ -1,6 +1,6 @@
 on:
-  # schedule:
-  #   - cron: '23 4 * * 0'
+  schedule:
+    - cron: '23 4 * * 0'
   
   push:
     branches:
@@ -27,7 +27,7 @@ on:
 
 env:
   CACHE_TAG: 2026082301
-  LATEST_IMAGE_TAG: latest_test
+  LATEST_IMAGE_TAG: latest
 
 jobs:
   build_images:
@@ -53,7 +53,7 @@ jobs:
             packages_directory: slackware
       max-parallel: 1
     permissions:
-      packages: read
+      packages: write
     runs-on: ubuntu-latest
     steps:
       - name: Set Slackware Mirror
@@ -163,10 +163,12 @@ jobs:
         uses: ./.github/actions/slackware_root_fs_archive
         if: steps.source_directory.outcome == 'success'
         with:
-          ARCH: ${{ matrix.arch }}
-          RELEASE: ${{ matrix.release }}
-          SOURCE: ${{ github.workspace }}/slackware/source
-          TARGET: ${{ github.workspace }}/slackware/base
+          entrypoint: slackware/build
+          args:
+            ${{ matrix.arch }}
+            ${{ matrix.release }}
+            source
+            base
 
       - name: Setup Docker Buildx
         id: setup_buildx

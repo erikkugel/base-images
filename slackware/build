@@ -1,0 +1,74 @@
+#!/bin/bash
+set -e
+cd $(dirname $0)
+ARCH=${1:-'x86_64'}
+case $ARCH in
+		i686)
+				PATH_SUFFIX=''
+		;;
+		x86_64)
+				PATH_SUFFIX='64'
+		;;
+		*)
+				echo "Usage: ARCH=[ x86_64 | i686 ] `basename $0`"
+				exit 2
+		;;
+esac
+RELEASE=${2:-'15.0'}
+SOURCE=${3:-"./slackware${PATH_SUFFIX}-${RELEASE}"}
+TARGET=${4:-'./base'}
+
+echo -------------------------------------------------------------------------------
+echo Architecture: ${ARCH}
+echo Release: ${RELEASE}
+echo Source: ${SOURCE}
+echo Target: ${TARGET}
+echo -------------------------------------------------------------------------------
+
+rm -r -f ${TARGET}
+mkdir -p ${TARGET}
+
+# Install the latest version from /patches, when no patches exist fall back to the original
+while IFS= read -r pkg; do
+		if [ -f ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz ]; then
+				/sbin/installpkg --root ${TARGET} --terse ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz
+		else
+				/sbin/installpkg --root ${TARGET} --terse ${SOURCE}/slackware${PATH_SUFFIX}/${pkg}-[0-9]*.txz
+		fi
+done < pkgs-${RELEASE}.list
+ldconfig -f ${TARGET}/etc/ld.so.conf -c ${TARGET}/etc/ld.so.cache -r ${TARGET}
+
+echo 'Configuring Slackpkg and dependecies...'
+cp -v -f slackpkg.conf ${TARGET}/etc/slackpkg/slackpkg.conf
+
+echo 'Patch slackware.conf to hardcode architecture...'
+sed -E -i "s/^#?ARCH=.*$/ARCH=${ARCH}/g" ${TARGET}/etc/slackpkg/slackpkg.conf
+grep 'ARCH=' ${TARGET}/etc/slackpkg/slackpkg.conf
+echo "https://mirrors.slackware.com/slackware/slackware${PATH_SUFFIX}-${RELEASE}/" > ${TARGET}/etc/slackpkg/mirrors
+if [ "$RELEASE" = 'current' ]; then
+		touch ${TARGET}/var/lib/slackpkg/current
+fi
+cp -v ${SOURCE}/GPG-KEY ${TARGET}/root/GPG-KEY
+
+# GPG2 has various inflating prerequisites,
+# fall back to GPG v1 when both are available
+if [ -x ${TARGET}/usr/bin/gpg1 ]; then
+		GPG_BIN=/usr/bin/gpg1
+elif [ -x ${TARGET}/usr/bin/gpg ]; then
+		GPG_BIN=/usr/bin/gpg
+fi
+chroot ${TARGET} ${GPG_BIN} --homedir /root/.gnupg --import /root/GPG-KEY
+chroot ${TARGET} /usr/sbin/update-ca-certificates -v -f
+
+echo 'Creating archive...'
+tar --file rootfs.tar \
+	--numeric-owner \
+	--directory ${TARGET} \
+	--exclude run/lock/pkgtools \
+	--exclude root/GPG-KEY \
+	--exclude dev \
+	--exclude proc \
+	--exclude sys \
+	--create .
+
+exit
