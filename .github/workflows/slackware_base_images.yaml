@@ -182,7 +182,7 @@ jobs:
           echo version=$(date +%Y%m%d) >> $GITHUB_OUTPUT
           echo created=$(date -u +"%Y-%m-%dT%H:%M:%SZ") >> $GITHUB_OUTPUT
 
-      - name: Docker meta
+      - name: Generate Image Metadata
         id: meta
         uses: docker/metadata-action@v6
         if: steps.image_details.outcome == 'success'
@@ -214,7 +214,8 @@ jobs:
           provenance: false
           tags: "${{ matrix.image_name }}:${{ steps.image_details.outputs.version }}"
       
-      - id: tests
+      - name: Run Image Tests
+        id: tests
         if: steps.build.outcome == 'success'
         run: |
           # Generate a unique tag for the newly built image
@@ -238,7 +239,8 @@ jobs:
             --env WGET_NO_CHECK_CERTIFICATE=${{ github.event_name == 'workflow_dispatch' && github.event.inputs.slackware_mirror_ssl_check == false }} \
             slackware_test:${TEST_IMAGE_UUID}
 
-      - if: steps.tests.conclusion != 'skipped'
+      - name: Clean-up Test Images
+        if: steps.tests.conclusion != 'skipped'
         run: docker image rm -f
           slackware_test:${{ steps.tests.outputs.base_image_uuid }}
           slackware_test:${{ steps.tests.outputs.test_image_uuid }}
