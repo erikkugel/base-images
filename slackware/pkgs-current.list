@@ -75,6 +75,7 @@ ap/diffutils
 ap/slackpkg
 d/perl
 l/libunistring
+l/ncurses
 n/ca-certificates
 n/gnupg
 n/openssl
