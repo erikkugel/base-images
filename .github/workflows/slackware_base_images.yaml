@@ -2,16 +2,6 @@ on:
   schedule:
     - cron: '23 4 * * 0'
   
-  push:
-    branches:
-      - main
-      - workflows
-    paths:
-      - 'slackware/build'
-      - 'slackware/Dockerfile'
-      - 'slackware/pkgs*.list'
-      - 'slackware/slackpkg.conf'
-
   workflow_dispatch:
     inputs:
       slackware_mirror_domain:
@@ -20,13 +10,23 @@ on:
         required: true
         default: 'mirrors.slackware.com'
       slackware_mirror_ssl_check:
-        description: Slackware mirror SSL certificate check
+        description: Check Slackware mirror SSL certificate?
         type: boolean
         required: true
         default: true
+      push_to_registry:
+        description: Push the image to the registry?
+        type: boolean
+        required: true
+        default: true
+      build_if_no_new_packages:
+        description: Build even if there are no new packages
+        type: boolean
+        required: true
+        default: false
 
 env:
-  CACHE_TAG: 2026082301
+  CACHE_TAG: 2026101101
   LATEST_IMAGE_TAG: latest
 
 jobs:
@@ -121,7 +121,7 @@ jobs:
       - name: Restore Slackware Packages Cache
         id: cache
         uses: actions/cache@v6
-        if: steps.mirror_packages_hash.outputs.new == 'true'
+        if: ${{ steps.mirror_packages_hash.outputs.new == 'true' || github.event.inputs.build_if_no_new_packages }}
         with:
           path: /tmp/source
           key: slackware-packages-${{ env.CACHE_TAG }}-${{ matrix.arch }}-${{ matrix.release }}-${{ steps.mirror_packages_hash.outputs.list_hash }}-${{ steps.mirror_packages_hash.outputs.mirror_packages_hash }}
@@ -130,7 +130,7 @@ jobs:
             slackware-packages-${{ env.CACHE_TAG }}-${{ matrix.arch }}-${{ matrix.release }}-
 
       - name: Download Slackware Packages
-        if: steps.cache.outputs.cache-hit != 'true' && steps.mirror_packages_hash.outputs.new == 'true'
+        if: steps.cache.outputs.cache-hit != 'true' &&  ( steps.mirror_packages_hash.outputs.new == 'true' || github.event.inputs.build_if_no_new_packages )
         run: |
           echo "Downloading Slackware Packages"
           # mkdir -p /tmp/source
@@ -150,13 +150,15 @@ jobs:
 
       - name: Prepare Source Directory
         id: source_directory
-        if: steps.mirror_packages_hash.outputs.new == 'true'
+        if: steps.mirror_packages_hash.outputs.new == 'true' || github.event.inputs.build_if_no_new_packages
         run: |
           rm -r -f $GITHUB_WORKSPACE/slackware/source
           cp -a /tmp/source $GITHUB_WORKSPACE/slackware/source
           wget --verbose ${{ steps.slackware_mirror_check_certificate.outputs.no_check_certificate }} \
            -O $GITHUB_WORKSPACE/slackware/source/GPG-KEY \
            ${{ steps.slackware_mirror.outputs.url }}/GPG-KEY
+          echo 'Prepared txz packages: '
+          find $GITHUB_WORKSPACE/slackware/source/ -type f -name "*.txz" | sort | nl
 
       - name: Create Root Filesystem Archive
         id: create_archive
@@ -247,7 +249,7 @@ jobs:
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v7
-        if: steps.tests.outcome == 'success'
+        if: steps.tests.outcome == 'success' && github.event.inputs.push_to_registry == 'true'
         with:
           context: slackware
           push: true

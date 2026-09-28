@@ -67,6 +67,7 @@ kde/perlqt
 l/dbus-glib
 l/dbus-python
 l/libunistring
+l/ncurses
 n/bind
 n/ca-certificates
 n/gnupg
