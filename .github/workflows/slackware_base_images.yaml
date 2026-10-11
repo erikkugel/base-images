@@ -30,13 +30,13 @@ on:
         required: true
         default: true
       build_if_no_new_packages:
-        description: Check for new packages and skip if they are none
+        description: Build even if there are no new packages
         type: boolean
         required: true
         default: false
 
 env:
-  CACHE_TAG: 2026082301
+  CACHE_TAG: 2026101101
   LATEST_IMAGE_TAG: latest
 
 jobs:
@@ -168,7 +168,7 @@ jobs:
            -O $GITHUB_WORKSPACE/slackware/source/GPG-KEY \
            ${{ steps.slackware_mirror.outputs.url }}/GPG-KEY
           echo 'Prepared txz packages: '
-          find $GITHUB_WORKSPACE/slackware/source/ -type f -name "*.txz" | nl
+          find $GITHUB_WORKSPACE/slackware/source/ -type f -name "*.txz" | sort | nl
 
       - name: Create Root Filesystem Archive
         id: create_archive
