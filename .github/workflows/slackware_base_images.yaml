@@ -20,7 +20,7 @@ on:
         required: true
         default: true
       build_if_no_new_packages:
-        description: Build even if there are no new packages
+        description: Build even if there are no new packages?
         type: boolean
         required: true
         default: false
@@ -249,7 +249,7 @@ jobs:
 
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v7
-        if: steps.tests.outcome == 'success' && github.event.inputs.push_to_registry == 'true'
+        if: steps.tests.outcome == 'success' && github.event.inputs.push_to_registry
         with:
           context: slackware
           push: true
