@@ -1,4 +1,27 @@
-# Slackware64 base image
+# Slackware64 base image builder
+
+Build automation for creating base images for Slackware Linux.
+
+### Supported target architecrures:
+* x86_64
+* i686
+
+### Supported Slackware releases:
+* 15.0
+* Current (rolling release)
+
+### Prerequisites:
+* Docker engine
+* Bash
+* Installpkg
+* Ldconfig
+* Chroot
+* Grep
+* Sed
+
+The easiest (and the only tested) way to satisfy all the prerequisites is building within an installed Slackware OS with Docker.
+
+Docker does not ship with the current official Slackware packages, but is easily installable in various ways, including this [Docker Engine Slackbuild](https://github.com/erikkugel/SlackBuilds/tree/master/docker).
 
 ## Building locally or on a VM:
 
@@ -12,16 +35,20 @@
 
 1. Run the `build` script:
     ```sh
-    build
+    ./build
     ```
     Or:
     ```sh
-    SOURCE=/mnt/dvd TARGET=/tmp/base build
+    SOURCE=/mnt/dvd TARGET=/tmp/base ./build
     ```
 
-1. Build the base image archive into Docker (optionally, set metadata with `--label`):
+1. Build the base image with using the provided [Dockerfile](./Dockerfile) (optionally, set metadata with `--label`):
     ```sh
-    docker build --tag slackware64:latest .
+    docker image build --tag slackware64:latest \
+        --label "org.opencontainers.image.source=$(git ls-remote --get-url)" \
+        --label "org.opencontainers.image.description=Slackware64 base image" \
+        --label "org.opencontainers.image.licenses=WTFPL" \
+        .
     ```
 
 1. To clean up, simply remove the `$TARGET` directory (defaults to `./base`).
@@ -55,21 +82,15 @@ Test the image by building it with [Dockerfile.test](./Dockerfile.test) and runn
     |99|Slackpkg related error|
     |98|Target architecture related error|
     |97|`umask` is not 0022|
-    |Other|Likeyly an error message from other programs|
+    |Other|Likely an error message from other programs|
 
 ## Building in a Docker container
 
-The build can be executed in a Slackware Docker container as long as the container has some basic tools:
+The build can be executed in a Slackware Docker container, as long as the container includes the prerequisites listed earlier.
 
+1. Pull a Slackware image that contains the build prerequisites below.
 
-1. Pull a Slackware image that contains the build prerequisites below:
-    * `installpkg`
-    * `bash`
-    * `ldconfig`
-    * `chroot`
-    * `grep`
-    * `sed`
-
+    You may use the base image published from this repository which will have all the reprequisites and should be suitable for all supported release and architectures:
     ```sh
     docker image pull ghcr.io/erikkugel/slackware64:latest
     ```
@@ -88,7 +109,7 @@ The build can be executed in a Slackware Docker container as long as the contain
 
 1. Build the base image:
     ```sh
-    docker image build --tag slackware64:${TAG} \
+    docker image build --tag slackware64:latest \
         --label "org.opencontainers.image.source=$(git ls-remote --get-url)" \
         --label "org.opencontainers.image.description=Slackware64 base image" \
         --label "org.opencontainers.image.licenses=WTFPL" \
@@ -124,18 +145,18 @@ build_if_no_new_packages:
   default: false
 ```
 
-### Using [Nektos gh-act GitHub CLI extension](https://github.com/nektos/gh-act) to run the GitHub Actions Workflow locally:
+### Using the [Nektos gh-act GitHub CLI extension](https://github.com/nektos/gh-act) to run the GitHub Actions Workflow locally:
 
-1. Install [GitHub CLI](https://cli.github.com/).
+1. Install and test the [GitHub CLI](https://cli.github.com/).
 
 1. Install and test the [GitHub Act CLI extension](https://github.com/nektos/gh-act).
 
 1. Trigger a local workflow run from the repository's root folder:
     ```sh
-    gh act --workflow .github/workflows/slackware_base_images.yaml workflow_dispatch \
+    gh act --workflows .github/workflows/slackware_base_images.yaml workflow_dispatch \
         --platform ubuntu-latest=catthehacker/ubuntu:act-latest \
         --input build_if_no_new_packages=1 \
         --input push_to_registry=1 \
-        --input slackware_mirror_ssl_check=0 \
-        --input slackware_mirror_domain='https://mirrors.slackware.com/slackware/slackware64-15.0/'
+        --input slackware_mirror_ssl_check=1 \
+        --input slackware_mirror_domain='mirrors.slackware.com'
     ```

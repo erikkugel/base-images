@@ -39,18 +39,18 @@ jobs:
             release: '15.0'
             image_name: ghcr.io/${{ github.repository_owner }}/slackware64
             packages_directory: slackware64
-          - arch: i686
-            release: '15.0'
-            image_name: ghcr.io/${{ github.repository_owner }}/slackware
-            packages_directory: slackware
-          - arch: x86_64
-            release: 'current'
-            image_name: ghcr.io/${{ github.repository_owner }}/slackware64-current
-            packages_directory: slackware64
-          - arch: i686
-            release: 'current'
-            image_name: ghcr.io/${{ github.repository_owner }}/slackware-current
-            packages_directory: slackware
+          # - arch: i686
+          #   release: '15.0'
+          #   image_name: ghcr.io/${{ github.repository_owner }}/slackware
+          #   packages_directory: slackware
+          # - arch: x86_64
+          #   release: 'current'
+          #   image_name: ghcr.io/${{ github.repository_owner }}/slackware64-current
+          #   packages_directory: slackware64
+          # - arch: i686
+          #   release: 'current'
+          #   image_name: ghcr.io/${{ github.repository_owner }}/slackware-current
+          #   packages_directory: slackware
       max-parallel: 1
     permissions:
       packages: write
@@ -248,11 +248,12 @@ jobs:
           slackware_test:${{ steps.tests.outputs.test_image_uuid }}
 
       - name: Build and Push Docker Image
-        uses: docker/build-push-action@v7
         if: steps.tests.outcome == 'success' && github.event.inputs.push_to_registry
+        uses: docker/build-push-action@v7
         with:
           context: slackware
           push: true
           provenance: false
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
