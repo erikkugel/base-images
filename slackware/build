@@ -28,10 +28,11 @@ echo ---------------------------------------------------------------------------
 rm -r -f ${TARGET}
 mkdir -p ${TARGET}
 
+
+ls -l {SOURCE}/patches/packages/ca-certificates-20261020-noarch-1_slack15.0.txz
 # Install the latest version from /patches, when no patches exist fall back to the original
 while IFS= read -r pkg; do
         if [ -f ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz ]; then
-                ls ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz
                 /sbin/installpkg --root ${TARGET} --terse ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz
         else
                 /sbin/installpkg --root ${TARGET} --terse ${SOURCE}/slackware${PATH_SUFFIX}/${pkg}-[0-9]*.txz
