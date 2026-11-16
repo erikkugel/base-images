@@ -30,6 +30,7 @@ mkdir -p ${TARGET}
 
 # Install the latest version from /patches, when no patches exist fall back to the original
 while IFS= read -r pkg; do
+        ls ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz
         if [ -f ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz ]; then
                 /sbin/installpkg --root ${TARGET} --terse ${SOURCE}/patches/packages/$(basename ${pkg})-[0-9]*.txz
         else
